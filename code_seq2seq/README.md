@@ -1,4 +1,4 @@
-#基于pytorch+seq2seq实现的NMT
+# 基于pytorch+seq2seq实现的NMT
 
 ## 代码流程
 1. 数据加载
