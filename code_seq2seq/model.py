@@ -126,7 +126,7 @@ class Decoder(nn.Module):
         :param hidden: 初始隐藏状态向量，lstm为(h,c)
         :return: 输出概率
         """
-        embed=self.embedding(x).view(self.seq_len,self.batch_size,-1)  # [seq_len,batch_size,embedding_size]
+        embed=self.embedding(x).view(self.seq_len,self.batch_size,self.embedding_size)  # [seq_len,batch_size,embedding_size]
         embed=self.dropout(embed)
         # [seq_len,batch_size,hidden_size] [num_layers,batch_size,hidden_size]
         output,hidden=self.lstm(embed,(hidden[0],hidden[1]))
@@ -170,14 +170,13 @@ class Seq2Seq(nn.Module):
         #decoder初始隐层状态向量为encoder的输出
         decoder_hidden=encoder_hidden
         batch_size,seq_len=tar.size()
-        #TODO 数据类型错误
-        decoder_input=torch.zeros(1,2,dtype=torch.long) #decoder第一时刻的输入是开始符号
-        decoder_input=decoder_input.float()
-        print(decoder_input.dtype)
+
+        decoder_input=torch.ones(1,batch_size,dtype=torch.long)*2 #decoder第一时刻的输入是开始符号
         decoder_outputs=torch.zeros([seq_len,batch_size])
         total_loss=0
+
         for di in range(seq_len):
-            decoder_output,decoder_hidden=self.decoder(decoder_input,decoder_hidden)
+            decoder_output,decoder_hidden=self.decoder(decoder_input.long(),decoder_hidden)
             topv, topi = decoder_output.topk(1, dim=-1)  # 概率最大的值和下标，获取下一时刻的值作为输入[batch_size,1]
             total_loss+=self.criterion(decoder_output,tar[:,di])
             if self.teacher_forcing and random.random()>0.5:
