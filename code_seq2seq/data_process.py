@@ -79,8 +79,8 @@ def load_data(source='eng',target='fra'):
 
     pairs=list(map(lambda x:[normalize(x[0]),normalize(x[1])],pairs))
     #统计文本最长的长度和最短的长度
-    src_len=list(map(lambda x:len(x[0]),pairs))
-    tar_len=list(map(lambda x:len(x[1]),pairs))
+    src_len=list(map(lambda x:len(x[0].split()),pairs))
+    tar_len=list(map(lambda x:len(x[1].split()),pairs))
     src_max_len,src_min_len=max(src_len),min(src_len)
     tar_max_len,tar_min_len=max(tar_len),min(tar_len)
 
