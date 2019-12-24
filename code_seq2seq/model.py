@@ -12,7 +12,6 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim import Adam
 
 
 class SelfAttention(nn.Module):
@@ -89,7 +88,6 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self,
                  batch_size=64,
-                 seq_len=1,
                  embedding_size=128,
                  hidden_size=128,
                  num_layers=2,
@@ -105,13 +103,13 @@ class Decoder(nn.Module):
         """
         super(Decoder, self).__init__()
         self.batch_size=batch_size
-        self.seq_len=seq_len
+        self.seq_len=1
         self.embedding_size=embedding_size
         self.hidden_size=hidden_size
         self.num_layers=num_layers
         self.vocab_size=tar_vocab_size
 
-        self.embedding=nn.Embedding(num_embeddings=self.vocab_size,embedding_dim=self.embedding_size)
+        self.embedding=nn.Embedding(num_embeddings=self.vocab_size,embedding_dim=self.embedding_size,padding_idx=0)
         self.lstm=nn.LSTM(input_size=self.embedding_size,
                           hidden_size=self.hidden_size,
                           num_layers=self.num_layers)
@@ -172,12 +170,13 @@ class Seq2Seq(nn.Module):
         batch_size,seq_len=tar.size()
 
         decoder_input=torch.ones(1,batch_size,dtype=torch.long)*2 #decoder第一时刻的输入是开始符号
-        decoder_outputs=torch.zeros([seq_len,batch_size])
+        decoder_outputs=torch.zeros([seq_len,batch_size],dtype=torch.long)
         total_loss=0
 
         for di in range(seq_len):
             decoder_output,decoder_hidden=self.decoder(decoder_input.long(),decoder_hidden)
             topv, topi = decoder_output.topk(1, dim=-1)  # 概率最大的值和下标，获取下一时刻的值作为输入[batch_size,1]
+            decoder_outputs[di]=topi.squeeze(1)
             total_loss+=self.criterion(decoder_output,tar[:,di])
             if self.teacher_forcing and random.random()>0.5:
                 #使用真实值作为下一时刻的输入
@@ -188,9 +187,7 @@ class Seq2Seq(nn.Module):
                 for i in range(batch_size):
                     decoder_input[i]=topi[i]
 
-        return total_loss/seq_len
-
-
+        return total_loss/seq_len, decoder_outputs
 
 
 
@@ -201,15 +198,16 @@ class Seq2Seq(nn.Module):
 if __name__ == '__main__':
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     encoder=Encoder(batch_size=2,seq_len=3,embedding_size=4,hidden_size=4,num_layers=2,src_vocab_size=6)
-    decoder=Decoder(batch_size=2,seq_len=1,embedding_size=4,hidden_size=4,num_layers=2,tar_vocab_size=6)
+    decoder=Decoder(batch_size=2,embedding_size=4,hidden_size=4,num_layers=2,tar_vocab_size=6)
     src=torch.tensor([[0,2,4],
                       [1,3,5]])
     tar=torch.tensor([[2,4,3,1],
                       [5,0,1,3]])
     criterion=nn.NLLLoss()
     model=Seq2Seq(encoder,decoder,criterion).to(device)
-    loss=model(src,tar)
+    loss,outputs=model(src,tar)
     print(loss)
+    print(outputs)
 
 
 
