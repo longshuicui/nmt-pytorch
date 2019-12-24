@@ -7,10 +7,41 @@
 @modify:
 
 """
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
+
+
+class SelfAttention(nn.Module):
+    def __init__(self,d_model=512,num_head=8):
+        """
+        多头自我注意力机制
+        :param d_model: 模型维度，默认512
+        :param num_head: 多头机制，默认为8
+        """
+        super(SelfAttention, self).__init__()
+        assert d_model%num_head==0
+        self.d_model=d_model
+        self.num_head=num_head
+        self.k=d_model//num_head
+
+    def forward(self, tensor,mask=None,dropout=None):
+        b, s, h = tensor.size()
+        query = nn.Linear(h, h)(tensor).view(b * self.num_head, s, self.k)  # [b*head,s,k]
+        key = nn.Linear(h, h)(tensor).view(b * self.num_head, s, self.k)  # [b*head,s,k]
+        value = nn.Linear(h, h)(tensor).view(b * self.num_head, s, self.k)  # [b*head,s,k]
+
+        score = torch.matmul(query, key.transpose(2, 1)).view(b,self.num_head,s,s)  #[b,head,s,s]
+        if mask is not None:
+            assert mask.dim()==4   #[batch_size,1,1,seq_len]
+            score=score.masked_fill(mask==0, -1e20)
+        weight=nn.Softmax(dim=-1)(score/math.sqrt(h)) #[b,head,s,s]
+        if dropout is not None:
+            weight=F.dropout(weight,p=dropout)
+        tensor = torch.matmul(weight.view(-1,s,s), value).view(b, s, h)
+        return tensor
 
 
 class Encoder(nn.Module):
@@ -53,11 +84,24 @@ class Encoder(nn.Module):
                 torch.zeros(self.num_layers * 2, self.batch_size, self.hidden_size))
 
 
+class Decoder(nn.Module):
+    def __init__(self):
+        super(Decoder, self).__init__()
+
+
+    def forward(self, x):
+        pass
+
+
+
+
+
+
 
 
 if __name__ == '__main__':
-    a = torch.tensor([[1, 2, 3, 0],
-                      [4, 6, 0, 0]])
-    print(a.size())
-    encoder = Encoder(seq_len=4, embedding_size=3, hidden_size=3, vocab_size=7)
-    outputs, hidden = encoder(a)
+    a = torch.randn([2,3,4])
+    mask=torch.zeros([2,1,1,3],dtype=torch.int32)
+    res=SelfAttention(4,2)(a,mask,dropout=0.1)
+    print(res)
+
