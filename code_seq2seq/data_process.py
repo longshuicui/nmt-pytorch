@@ -19,8 +19,8 @@ class Lang:
     """生成word-index映射字典"""
     def __init__(self,name):
         self.name=name
-        self.word2index={'<PAD>':0,'<UNK>':1,'<SOS>':2,'<EOS>':3}
-        self.index2word={0:'<PAD>',1:'<UNK>',2:'<SOS>',3:'<EOS>'}
+        self.word2index={'<PAD>':0, '<UNK>':1, '<SOS>':2, '<EOS>':3}
+        self.index2word={0:'<PAD>', 1:'<UNK>', 2:'<SOS>', 3:'<EOS>'}
         self.n_words=len(self.word2index)
         self.word2count={}
 
@@ -138,5 +138,3 @@ if __name__ == '__main__':
     src_lang, tar_lang, pairs=load_data()
     #2.数据ids化
     vectors=text2tensor(src_lang,tar_lang,pairs)
-    print(pairs[10])
-    print(vectors[10])
