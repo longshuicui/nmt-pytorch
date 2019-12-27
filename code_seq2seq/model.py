@@ -44,6 +44,51 @@ class SelfAttention(nn.Module):
         return tensor
 
 
+class SoftAttention(nn.Module):
+    def __init__(self, hidden_size=128, seq_len=50):
+        """
+        soft attention 的实现
+        :param hidden_size: 隐藏层的维度
+        :param seq_len: source序列长度
+        """
+        super(SoftAttention, self).__init__()
+        self.hidden_size=hidden_size
+        self.seq_len=seq_len
+        self.linear_1=nn.Linear(in_features=self.hidden_size,out_features=self.hidden_size)
+        self.linear_2=nn.Linear(in_features=self.hidden_size,out_features=self.hidden_size)
+        self.score=nn.Linear(in_features=self.hidden_size,out_features=self.seq_len)
+        self.softmax=nn.Softmax(dim=-1)
+        self.att=nn.MultiheadAttention
+
+    def forward(self, encoder_outputs, decoder_hidden, encoder_mask=None):
+        """
+        前向计算过程
+        :param encoder_outputs: encoder的输出 [batch_size, seq_len, hidden_size]
+        :param decoder_hidden: decoder每一个时刻的输出  [1,batch_size,hidden_size]
+        :param encoder_mask: encoder的mask[batch_size,seq_len,1]
+        :return: decoder_hidden_att
+        """
+        decoder_hidden=decoder_hidden.view(-1,1,self.hidden_size)
+        out=torch.tanh(self.linear_1(encoder_outputs)+self.linear_2(decoder_hidden))
+        score=self.score(out)  #[batch_size,seq_len,seq_len]
+        print(score)
+        if encoder_mask is not None:
+            encoder_mask=encoder_mask.unsqueeze(-1)
+            print(encoder_mask)
+            score=score.masked_fill(encoder_mask==0,value=-1e19)
+            print(score)
+            exit()
+
+        weight = self.softmax(score.transpose(2,1))
+        print(weight)
+        weight=weight[:,0,:]
+        decoder_hidden= (encoder_outputs*weight.unsqueeze(-1)).sum(dim=1)
+        print(decoder_hidden)
+        print(decoder_hidden.size())
+        pass
+
+
+
 class Encoder(nn.Module):
     def __init__(self,
                  batch_size=64,
@@ -95,7 +140,6 @@ class Decoder(nn.Module):
         """
         解码器初始化，这里用的是单向双层的lstm
         :param batch_size: 参与训练的一个batch的样本数量，默认64
-        :param seq_len: 序列长度，默认1
         :param embedding_size: 输入向量维度，默认128
         :param hidden_size: 隐藏层向量维度，默认128
         :param num_layers: lstm层数，默认2
@@ -124,9 +168,9 @@ class Decoder(nn.Module):
         :param hidden: 初始隐藏状态向量，lstm为(h,c)
         :return: 输出概率
         """
-        embed=self.embedding(x).view(self.seq_len,self.batch_size,self.embedding_size)  # [seq_len,batch_size,embedding_size]
+        embed=self.embedding(x).view(self.seq_len,x.size(0),self.embedding_size)  # [seq_len,batch_size,embedding_size]
         embed=self.dropout(embed)
-        # [seq_len,batch_size,hidden_size] [num_layers,batch_size,hidden_size]
+        # [1,batch_size,hidden_size] [num_layers,batch_size,hidden_size]
         output,hidden=self.lstm(embed,(hidden[0],hidden[1]))
         output=self.linear(output) #[seq_len,batch_size,vocab_size]
         output=self.softmax(output.squeeze(0)) #[batch_size,vocab_size]
@@ -139,7 +183,8 @@ class Seq2Seq(nn.Module):
                  decoder=None,
                  criterion=None,
                  teacher_forcing=True,
-                 beam_search=False):
+                 beam_search=False,
+                 flag=True):
         """
         seq2seq模型
         :param encoder: 编码器，单向双层lstm
@@ -147,6 +192,7 @@ class Seq2Seq(nn.Module):
         :param criterion: 损失函数
         :param teacher_forcing: 训练过程中是否用真实值输入，默认True
         :param beam_search: 训练、测试过程中是否用动态规划寻找最优解，默认False   后面实现
+        :param train：训练or测试  默认True
         """
         super(Seq2Seq, self).__init__()
         self.encoder=encoder
@@ -154,6 +200,7 @@ class Seq2Seq(nn.Module):
         self.criterion=criterion
         self.teacher_forcing=teacher_forcing
         self.beam_search=beam_search
+        self.flag=flag
 
     def forward(self, src,tar):
         """
@@ -169,7 +216,7 @@ class Seq2Seq(nn.Module):
         decoder_hidden=encoder_hidden
         batch_size,seq_len=tar.size()
 
-        decoder_input=torch.ones(1,batch_size,dtype=torch.long)*2 #decoder第一时刻的输入是开始符号
+        decoder_input=torch.ones(batch_size,1,dtype=torch.long)*2 #decoder第一时刻的输入是开始符号
         decoder_outputs=torch.zeros([seq_len,batch_size],dtype=torch.long)
         total_loss=0
 
@@ -177,7 +224,8 @@ class Seq2Seq(nn.Module):
             decoder_output,decoder_hidden=self.decoder(decoder_input.long(),decoder_hidden)
             topv, topi = decoder_output.topk(1, dim=-1)  # 概率最大的值和下标，获取下一时刻的值作为输入[batch_size,1]
             decoder_outputs[di]=topi.squeeze(1)
-            total_loss+=self.criterion(decoder_output,tar[:,di])
+            if self.flag:
+                total_loss+=self.criterion(decoder_output,tar[:,di])
             if self.teacher_forcing and random.random()>0.5:
                 #使用真实值作为下一时刻的输入
                 decoder_input=tar[:,di]
@@ -196,18 +244,15 @@ class Seq2Seq(nn.Module):
 
 
 if __name__ == '__main__':
-    device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    encoder=Encoder(batch_size=2,seq_len=3,embedding_size=4,hidden_size=4,num_layers=2,src_vocab_size=6)
-    decoder=Decoder(batch_size=2,embedding_size=4,hidden_size=4,num_layers=2,tar_vocab_size=6)
-    src=torch.tensor([[0,2,4],
-                      [1,3,5]])
-    tar=torch.tensor([[2,4,3,1],
-                      [5,0,1,3]])
-    criterion=nn.NLLLoss()
-    model=Seq2Seq(encoder,decoder,criterion).to(device)
-    loss,outputs=model(src,tar)
-    print(loss)
-    print(outputs)
+    torch.manual_seed(20191226)
+    encoder_outputs=torch.tensor([[[1,2,3,4,5],[1,5,3,6,9],[7,5,2,6,9]],
+                                  [[2,3,4,5,6],[7,4,2,3,1],[6,5,2,1,4]]],dtype=torch.float32)
+    decoder_hidden=torch.tensor([[[1,2,3,4,5],
+                                  [4,5,2,3,8]]],dtype=torch.float32)
+    encoder_mask=torch.tensor([[1,0,0],
+                               [1,1,0]],dtype=torch.float32)
+    att=SoftAttention(hidden_size=5,seq_len=3)
+    att(encoder_outputs,decoder_hidden,encoder_mask)
 
 
 
