@@ -117,7 +117,12 @@ def text2tensor(src_lang, tar_lang, pairs):
     logging.info("=" * 10 + 'transfer text to vector....')
     vectors=[]
     for pair in pairs:
-        vectors.append([sentence2tensor(src_lang,pair[0]),sentence2tensor(tar_lang,pair[1])])
+        src_vec=sentence2tensor(src_lang,pair[0])
+        #输入语言倒序输入
+        src_vec=list(reversed(src_vec))
+        tar_vec=sentence2tensor(tar_lang,pair[1])
+        tar_vec.append(tar_lang.word2index['<EOS>'])
+        vectors.append([src_vec,tar_vec])
     for i in range(5):
         pair=pairs[i]
         logging.info("=" * 10 + 'text:%s'%str(pair)+'  ==>  '+'vector:%s'%str(vectors[i]))
