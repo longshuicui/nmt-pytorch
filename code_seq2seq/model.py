@@ -45,7 +45,7 @@ class SelfAttention(nn.Module):
 
 
 class SoftAttention(nn.Module):
-    def __init__(self, hidden_size=128, seq_len=50):
+    def __init__(self,hidden_size=128, seq_len=50):
         """
         soft attention 的实现
         :param hidden_size: 隐藏层的维度
@@ -64,29 +64,23 @@ class SoftAttention(nn.Module):
         """
         前向计算过程
         :param encoder_outputs: encoder的输出 [batch_size, seq_len, hidden_size]
-        :param decoder_hidden: decoder每一个时刻的输出  [1,batch_size,hidden_size]
-        :param encoder_mask: encoder的mask[batch_size,seq_len,1]
+        :param decoder_hidden: decoder每一个时刻的输出  [2,batch_size,hidden_size]  lstm tuple(h,c)
+        :param encoder_mask: encoder的mask[batch_size,seq_len]
         :return: decoder_hidden_att
         """
-        decoder_hidden=decoder_hidden.view(-1,1,self.hidden_size)
-        out=torch.tanh(self.linear_1(encoder_outputs)+self.linear_2(decoder_hidden))
-        score=self.score(out)  #[batch_size,seq_len,seq_len]
-        print(score)
+        h=decoder_hidden[0].view(-1,2,self.hidden_size) #[batch_size,seq_len,hidden_size]
+        de_out=self.linear_1(h)
+        en_out=self.linear_2(encoder_outputs)
+        score=torch.matmul(en_out,de_out.transpose(2,1))
+
         if encoder_mask is not None:
             encoder_mask=encoder_mask.unsqueeze(-1)
-            print(encoder_mask)
             score=score.masked_fill(encoder_mask==0,value=-1e19)
-            print(score)
-            exit()
 
         weight = self.softmax(score.transpose(2,1))
-        print(weight)
-        weight=weight[:,0,:]
-        decoder_hidden= (encoder_outputs*weight.unsqueeze(-1)).sum(dim=1)
-        print(decoder_hidden)
-        print(decoder_hidden.size())
-        pass
-
+        h= torch.matmul(weight,encoder_outputs)
+        decoder_hidden= (h.transpose(1,0),decoder_hidden[1])
+        return decoder_hidden
 
 
 class Encoder(nn.Module):
@@ -211,16 +205,19 @@ class Seq2Seq(nn.Module):
         """
         #计算encoder
         encoder_output,encoder_hidden=self.encoder(src)
-
         #decoder初始隐层状态向量为encoder的输出
         decoder_hidden=encoder_hidden
         batch_size,seq_len=tar.size()
+        hidden_size=encoder_output.size()[-1]
+        encoder_mask = torch.where(src > 0, torch.full_like(src, 1), src)
 
+        attention=SoftAttention(hidden_size=hidden_size,seq_len=seq_len)
         decoder_input=torch.ones(batch_size,1,dtype=torch.long)*2 #decoder第一时刻的输入是开始符号
         decoder_outputs=torch.zeros([seq_len,batch_size],dtype=torch.long)
         total_loss=0
 
         for di in range(seq_len):
+            decoder_hidden=attention(encoder_output, decoder_hidden, encoder_mask=encoder_mask)
             decoder_output,decoder_hidden=self.decoder(decoder_input.long(),decoder_hidden)
             topv, topi = decoder_output.topk(1, dim=-1)  # 概率最大的值和下标，获取下一时刻的值作为输入[batch_size,1]
             decoder_outputs[di]=topi.squeeze(1)
@@ -252,8 +249,8 @@ if __name__ == '__main__':
     encoder_mask=torch.tensor([[1,0,0],
                                [1,1,0]],dtype=torch.float32)
     att=SoftAttention(hidden_size=5,seq_len=3)
-    att(encoder_outputs,decoder_hidden,encoder_mask)
-
+    res=att(encoder_outputs,decoder_hidden,encoder_mask)
+    print(res)
 
 
 
