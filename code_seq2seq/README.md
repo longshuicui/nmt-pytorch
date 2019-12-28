@@ -1,5 +1,9 @@
 # 基于pytorch+seq2seq实现的NMT
 
+## 运行环境
+- python3.7
+- pytorch1.1
+
 ## 代码流程
 1. 数据加载
 2. 数据预处理
